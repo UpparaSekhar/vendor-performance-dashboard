@@ -1,0 +1,502 @@
+
+import streamlit as st
+import pandas as pd
+import plotly.express as px
+
+# =========================================================
+# PAGE CONFIGURATION
+# =========================================================
+
+st.set_page_config(
+    page_title="Vendor Performance Dashboard",
+    page_icon="📊",
+    layout="wide"
+)
+
+# =========================================================
+# CUSTOM CSS
+# =========================================================
+
+st.markdown("""
+<style>
+
+.main {
+    background-color: #f5f7fa;
+}
+
+.block-container {
+    padding-top: 1.5rem;
+    padding-left: 2rem;
+    padding-right: 2rem;
+}
+
+.dashboard-title {
+    text-align: center;
+    font-size: 32px;
+    font-weight: 700;
+    color: #174a7e;
+    margin-bottom: 5px;
+}
+
+.dashboard-subtitle {
+    text-align: center;
+    color: #666;
+    font-size: 15px;
+    margin-bottom: 25px;
+}
+
+.kpi {
+    background: white;
+    padding: 18px;
+    border-radius: 12px;
+    text-align: center;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.08);
+    border-top: 4px solid #174a7e;
+}
+
+.kpi-title {
+    font-size: 14px;
+    color: #777;
+    margin-bottom: 5px;
+}
+
+.kpi-value {
+    font-size: 25px;
+    font-weight: 700;
+    color: #174a7e;
+}
+
+.section-title {
+    font-size: 20px;
+    font-weight: 700;
+    color: #174a7e;
+    margin-top: 20px;
+    margin-bottom: 10px;
+}
+
+</style>
+""", unsafe_allow_html=True)
+
+
+# =========================================================
+# LOAD DATA
+# =========================================================
+
+try:
+    df = pd.read_csv("vendor_data.csv")
+except FileNotFoundError:
+    st.error("vendor_data.csv was not found.")
+    st.info("Make sure vendor_data.csv is in the same folder as dashboard.py.")
+    st.stop()
+
+
+# =========================================================
+# CLEAN COLUMN NAMES
+# =========================================================
+
+df.columns = df.columns.str.strip()
+
+
+# =========================================================
+# CHECK REQUIRED COLUMNS
+# =========================================================
+
+required_columns = [
+    "Vendor",
+    "Order_ID",
+    "Purchase_Amount",
+    "Quantity",
+    "Defects"
+]
+
+missing_columns = [
+    col for col in required_columns
+    if col not in df.columns
+]
+
+if missing_columns:
+    st.error("Missing columns in vendor_data.csv:")
+    st.write(missing_columns)
+    st.write("Available columns:", list(df.columns))
+    st.stop()
+
+
+# =========================================================
+# CONVERT NUMERIC COLUMNS
+# =========================================================
+
+df["Purchase_Amount"] = pd.to_numeric(
+    df["Purchase_Amount"],
+    errors="coerce"
+).fillna(0)
+
+df["Quantity"] = pd.to_numeric(
+    df["Quantity"],
+    errors="coerce"
+).fillna(0)
+
+df["Defects"] = pd.to_numeric(
+    df["Defects"],
+    errors="coerce"
+).fillna(0)
+
+
+# =========================================================
+# SIDEBAR FILTER
+# =========================================================
+
+st.sidebar.title("🎛️ Dashboard Filters")
+
+vendors = sorted(df["Vendor"].dropna().unique())
+
+selected_vendors = st.sidebar.multiselect(
+    "Select Vendor",
+    vendors,
+    default=vendors
+)
+
+filtered_df = df[
+    df["Vendor"].isin(selected_vendors)
+].copy()
+
+
+# =========================================================
+# TITLE
+# =========================================================
+
+st.markdown(
+    '<div class="dashboard-title">📊 Vendor Performance Dashboard</div>',
+    unsafe_allow_html=True
+)
+
+st.markdown(
+    '<div class="dashboard-subtitle">'
+    'Interactive analysis of vendor orders, purchases, quantities and defects'
+    '</div>',
+    unsafe_allow_html=True
+)
+
+
+# =========================================================
+# KPI CALCULATIONS
+# =========================================================
+
+total_orders = filtered_df["Order_ID"].nunique()
+
+total_purchase = filtered_df["Purchase_Amount"].sum()
+
+total_quantity = filtered_df["Quantity"].sum()
+
+total_defects = filtered_df["Defects"].sum()
+
+avg_purchase = (
+    total_purchase / total_orders
+    if total_orders > 0
+    else 0
+)
+
+
+# =========================================================
+# KPI CARDS
+# =========================================================
+
+col1, col2, col3, col4, col5 = st.columns(5)
+
+with col1:
+    st.markdown(
+        f"""
+        <div class="kpi">
+            <div class="kpi-title">Total Orders</div>
+            <div class="kpi-value">{total_orders:,}</div>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+with col2:
+    st.markdown(
+        f"""
+        <div class="kpi">
+            <div class="kpi-title">Total Purchase</div>
+            <div class="kpi-value">₹{total_purchase:,.0f}</div>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+with col3:
+    st.markdown(
+        f"""
+        <div class="kpi">
+            <div class="kpi-title">Total Quantity</div>
+            <div class="kpi-value">{total_quantity:,.0f}</div>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+with col4:
+    st.markdown(
+        f"""
+        <div class="kpi">
+            <div class="kpi-title">Total Defects</div>
+            <div class="kpi-value">{total_defects:,.0f}</div>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+with col5:
+    st.markdown(
+        f"""
+        <div class="kpi">
+            <div class="kpi-title">Avg Purchase / Order</div>
+            <div class="kpi-value">₹{avg_purchase:,.0f}</div>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+
+st.divider()
+
+
+# =========================================================
+# VENDOR SUMMARY
+# =========================================================
+
+summary = (
+    filtered_df
+    .groupby("Vendor")
+    .agg(
+        Orders=("Order_ID", "nunique"),
+        Purchase_Amount=("Purchase_Amount", "sum"),
+        Quantity=("Quantity", "sum"),
+        Defects=("Defects", "sum")
+    )
+    .reset_index()
+)
+
+summary = summary.sort_values(
+    "Purchase_Amount",
+    ascending=False
+)
+
+
+# =========================================================
+# ROW 1 - PURCHASE + ORDERS
+# =========================================================
+
+st.markdown(
+    '<div class="section-title">💰 Vendor Purchase Performance</div>',
+    unsafe_allow_html=True
+)
+
+chart1, chart2 = st.columns(2)
+
+
+with chart1:
+
+    purchase_chart = px.bar(
+        summary.head(10),
+        x="Purchase_Amount",
+        y="Vendor",
+        orientation="h",
+        title="Top Vendors by Purchase Amount",
+        text_auto=".2s"
+    )
+
+    purchase_chart.update_layout(
+        yaxis={"categoryorder": "total ascending"},
+        height=400,
+        margin=dict(l=10, r=10, t=50, b=20)
+    )
+
+    st.plotly_chart(
+        purchase_chart,
+        use_container_width=True
+    )
+
+
+with chart2:
+
+    orders_chart = px.bar(
+        summary.head(10),
+        x="Orders",
+        y="Vendor",
+        orientation="h",
+        title="Top Vendors by Orders",
+        text_auto=True
+    )
+
+    orders_chart.update_layout(
+        yaxis={"categoryorder": "total ascending"},
+        height=400,
+        margin=dict(l=10, r=10, t=50, b=20)
+    )
+
+    st.plotly_chart(
+        orders_chart,
+        use_container_width=True
+    )
+
+
+# =========================================================
+# ROW 2 - QUANTITY + DEFECTS
+# =========================================================
+
+st.markdown(
+    '<div class="section-title">📦 Quantity & Quality Analysis</div>',
+    unsafe_allow_html=True
+)
+
+chart3, chart4 = st.columns(2)
+
+
+with chart3:
+
+    quantity_chart = px.bar(
+        summary.head(10),
+        x="Quantity",
+        y="Vendor",
+        orientation="h",
+        title="Quantity by Vendor",
+        text_auto=".2s"
+    )
+
+    quantity_chart.update_layout(
+        yaxis={"categoryorder": "total ascending"},
+        height=400,
+        margin=dict(l=10, r=10, t=50, b=20)
+    )
+
+    st.plotly_chart(
+        quantity_chart,
+        use_container_width=True
+    )
+
+
+with chart4:
+
+    defect_chart = px.bar(
+        summary.sort_values(
+            "Defects",
+            ascending=False
+        ).head(10),
+        x="Defects",
+        y="Vendor",
+        orientation="h",
+        title="Defects by Vendor",
+        text_auto=True
+    )
+
+    defect_chart.update_layout(
+        yaxis={"categoryorder": "total ascending"},
+        height=400,
+        margin=dict(l=10, r=10, t=50, b=20)
+    )
+
+    st.plotly_chart(
+        defect_chart,
+        use_container_width=True
+    )
+
+
+# =========================================================
+# PURCHASE DISTRIBUTION
+# =========================================================
+
+st.markdown(
+    '<div class="section-title">📈 Purchase Distribution</div>',
+    unsafe_allow_html=True
+)
+
+pie_data = summary.copy()
+
+pie_chart = px.pie(
+    pie_data,
+    names="Vendor",
+    values="Purchase_Amount",
+    hole=0.55,
+    title="Purchase Contribution by Vendor"
+)
+
+pie_chart.update_layout(
+    height=450
+)
+
+st.plotly_chart(
+    pie_chart,
+    use_container_width=True
+)
+
+
+# =========================================================
+# VENDOR PERFORMANCE TABLE
+# =========================================================
+
+st.markdown(
+    '<div class="section-title">🏆 Vendor Performance Details</div>',
+    unsafe_allow_html=True
+)
+
+display_summary = summary.copy()
+
+display_summary["Purchase_Amount"] = display_summary[
+    "Purchase_Amount"
+].round(2)
+
+display_summary["Defect_Rate"] = (
+    display_summary["Defects"] /
+    display_summary["Quantity"].replace(0, 1) *
+    100
+).round(2)
+
+display_summary = display_summary[
+    [
+        "Vendor",
+        "Orders",
+        "Purchase_Amount",
+        "Quantity",
+        "Defects",
+        "Defect_Rate"
+    ]
+]
+
+display_summary = display_summary.rename(
+    columns={
+        "Purchase_Amount": "Purchase Amount",
+        "Defect_Rate": "Defect Rate (%)"
+    }
+)
+
+st.dataframe(
+    display_summary,
+    use_container_width=True,
+    hide_index=True
+)
+
+
+# =========================================================
+# RAW DATA
+# =========================================================
+
+with st.expander("🔍 View Raw Data"):
+
+    st.dataframe(
+        filtered_df,
+        use_container_width=True,
+        hide_index=True
+    )
+
+
+# =========================================================
+# FOOTER
+# =========================================================
+
+st.divider()
+
+st.caption(
+    "Vendor Performance Analytics Dashboard | "
+    "Built with Python, Pandas, Plotly and Streamlit"
+)
